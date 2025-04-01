@@ -412,7 +412,7 @@ $(eval $(call BUILD, \
    	modules/port_conf.o, \
         %.so, \
         %.o, \
-        $(CXX) -shared -o $$@ $$^ $(LDFLAGS) $(LIBS)))
+        $(CXX) -shared -o $$@ $$^ $(LDFLAGS)))
 
 $(eval $(call BUILD, \
         MODULE_TEST_LD, \
