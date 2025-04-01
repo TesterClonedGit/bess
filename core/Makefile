@@ -259,7 +259,9 @@ BENCH_SRCS := $(filter %_bench.cc, $(ALL_SRCS))
 BENCH_OBJS := $(patsubst %.cc,%.o,$(notdir $(BENCH_SRCS)))
 BENCH_EXEC := $(BENCH_OBJS:%.o=%)
 
-MODULE_SRCS := $(filter-out $(TEST_SRCS) $(BENCH_SRCS), $(MODULES))
+MODULE_SRCS := $(filter-out $(TEST_SRCS) $(BENCH_SRCS), $(MODULES)\
+		$(foreach dir,modules,$(wildcard $(dir)/*.cc)) \
+               $(wildcard bess/core/modules/upf_bpf_main.cc))
 MODULE_OBJS := $(addprefix modules/,$(patsubst %.cc,%.o, \
                  $(notdir $(MODULE_SRCS))))
 
@@ -321,7 +323,7 @@ benchmarks: $(BENCH_OBJS) $(BENCH_EXEC)
 
 protobuf: $(PROTO_SRCS)
 
-modules: protobuf $(MODULE_OBJS) $(MODULE_LIBS)
+modules: protobuf $(MODULE_OBJS) $(MODULE_LIBS) modules/upf_bpf_main.so
 
 # This just makes sure all the plugin directories actually exist
 # (it's a sanity check on the value of $(PLUGINS) since if one is
@@ -410,6 +412,8 @@ $(eval $(call BUILD, \
         MODULE_LD, \
    	modules/port_conf.so, \
    	modules/port_conf.o, \
+   	modules/upf_bpf_main.so, \
+    	modules/upf_bpf_main.o, \
         %.so, \
         %.o, \
         $(CXX) -shared -o $$@ $$^ $(LDFLAGS)))
