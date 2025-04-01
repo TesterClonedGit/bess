@@ -99,7 +99,7 @@ CXXFLAGS += -std=c++17 -g3 -ggdb3 -march=$(CPU) \
             -isystem $(dir $<).. -isystem $(COREDIR)/modules \
             -D_GNU_SOURCE \
             -Wall -Wextra -Wcast-align -Wno-error=deprecated-declarations \
-            -Wno-error=array-bounds \
+            -Wno-error=array-bounds \ -no-pie \
             $(PKG_CFLAGS)
 
 ifeq "$(shell test $(CXXVERSION) -ge 9; echo $$?)" "0"
@@ -118,7 +118,7 @@ ifeq "$(shell expr $(CXXCOMPILER) = g++)" "1"
   CXXFLAGS += -fno-gnu-unique
 endif
 
-LDFLAGS += -rdynamic
+LDFLAGS += -rdynamic -no-pie
 ifdef BESS_LINK_DYNAMIC
   LIBS_ALL_SHARED = -Wl,-call_shared
   LIBS_DL_SHARED =
