@@ -180,10 +180,14 @@ endif
 # /path/to/existing/dir.  This doesn't help if the PLUGINS
 # path points to files (instead of directories), but that's
 # a severe user-configuration error.
-DRIVER_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/drivers))
-MODULE_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/modules))
-PROTO_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/protobuf))
-UTIL_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/utils))
+DRIVER_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/drivers), $(foreach dir,modules,$(wildcard $(dir)/*.cc)) \
+               $(wildcard bess/core/modules/upf_bpf_main.cc)))
+MODULE_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/modules), $(foreach dir,modules,$(wildcard $(dir)/*.cc)) \
+               $(wildcard bess/core/modules/upf_bpf_main.cc)))
+PROTO_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/protobuf), $(foreach dir,modules,$(wildcard $(dir)/*.cc)) \
+               $(wildcard bess/core/modules/upf_bpf_main.cc)))
+UTIL_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/utils), $(foreach dir,modules,$(wildcard $(dir)/*.cc)) \
+               $(wildcard bess/core/modules/upf_bpf_main.cc)))
 GATE_HOOK_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/gate_hooks))
 RESUME_HOOK_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/resume_hooks))
 
@@ -211,8 +215,10 @@ PROTOCFLAGS += --cpp_out=./pb --grpc_out=./pb --plugin=protoc-gen-grpc=$(PROTOC_
 # NB: MODULES as defined here may include test and/or benchmark
 # sources -- it's just all the files in all modules/.
 # Use MODULE_SRCS below, which filters them out, when that's important.
-DRIVERS := $(foreach dir,drivers $(DRIVER_PLUGINS),$(wildcard $(dir)/*.cc))
-MODULES := $(foreach dir,modules,$(wildcard $(dir)/*.cc))
+DRIVERS := $(foreach dir,drivers $(DRIVER_PLUGINS),$(wildcard $(dir)/*.cc), $(foreach dir,modules,$(wildcard $(dir)/*.cc)) \
+               $(wildcard bess/core/modules/upf_bpf_main.cc)))
+MODULES := $(foreach dir,modules,$(wildcard $(dir)/*.cc), $(foreach dir,modules,$(wildcard $(dir)/*.cc)) \
+               $(wildcard bess/core/modules/upf_bpf_main.cc)))
 UTILS := $(foreach dir,utils $(UTIL_PLUGINS),$(wildcard $(dir)/*.cc))
 GATE_HOOK_SRCS := $(foreach dir,gate_hooks $(GATE_HOOK_PLUGINS),$(wildcard $(dir)/*.cc))
 GATE_HOOKS_H := $(foreach dir,gate_hooks $(GATE_HOOK_PLUGINS),$(wildcard $(dir)/*.h))
@@ -250,12 +256,14 @@ vpath %.cc resume_hooks $(RESUME_HOOK_PLUGINS)
 
 ALL_SRCS := $(wildcard *.cc) $(GATE_HOOKS) $(RESUME_HOOKS) $(MODULES) $(DRIVERS) $(UTILS)
 
-TEST_SRCS := $(filter %_test.cc gtest_main.cc, $(ALL_SRCS))
+TEST_SRCS := $(filter %_test.cc gtest_main.cc, $(ALL_SRCS), $(foreach dir,modules,$(wildcard $(dir)/*.cc)) \
+               $(wildcard bess/core/modules/upf_bpf_main.cc)))
 TEST_OBJS := $(patsubst %.cc,%.o,$(notdir $(TEST_SRCS)))
 TEST_EXEC := $(filter-out gtest_main, $(TEST_OBJS:%.o=%))
 TEST_ALL_EXEC := all_test
 
-BENCH_SRCS := $(filter %_bench.cc, $(ALL_SRCS))
+BENCH_SRCS := $(filter %_bench.cc, $(ALL_SRCS), $(foreach dir,modules,$(wildcard $(dir)/*.cc)) \
+               $(wildcard bess/core/modules/upf_bpf_main.cc)))
 BENCH_OBJS := $(patsubst %.cc,%.o,$(notdir $(BENCH_SRCS)))
 BENCH_EXEC := $(BENCH_OBJS:%.o=%)
 
@@ -279,11 +287,13 @@ RESUME_HOOK_OBJS := $(addprefix resume_hooks/,$(patsubst %.cc,%.o, \
                       $(notdir $(RESUME_HOOK_SRCS))))
 
 # We don't (yet?) make shared objects for drivers.
-DRIVER_SRCS := $(filter-out $(TEST_SRCS) $(BENCH_SRCS), $(DRIVERS))
+DRIVER_SRCS := $(filter-out $(TEST_SRCS) $(BENCH_SRCS), $(DRIVERS), $(foreach dir,modules,$(wildcard $(dir)/*.cc)) \
+               $(wildcard bess/core/modules/upf_bpf_main.cc)))
 DRIVER_OBJS := $(addprefix drivers/,$(patsubst %.cc,%.o, \
                  $(notdir $(DRIVER_SRCS))))
 
-UTIL_SRCS := $(filter-out $(TEST_SRCS) $(BENCH_SRCS), $(UTILS))
+UTIL_SRCS := $(filter-out $(TEST_SRCS) $(BENCH_SRCS), $(UTILS), $(foreach dir,modules,$(wildcard $(dir)/*.cc)) \
+               $(wildcard bess/core/modules/upf_bpf_main.cc)))
 UTIL_OBJS := $(addprefix utils/,$(patsubst %.cc,%.o,$(notdir $(UTIL_SRCS))))
 
 SRCS := $(filter-out $(TEST_SRCS) $(BENCH_SRCS) $(MODULE_SRCS) $(DRIVER_SRCS) $(UTIL_SRCS) $(GATE_HOOK_SRCS) $(RESUME_HOOK_SRCS), $(ALL_SRCS)) $(PROTO_SRCS)
