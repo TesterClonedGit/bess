@@ -65,7 +65,7 @@ HAS_PKG_CONFIG := $(shell command -v $(PKG_CONFIG) 2>&1 >/dev/null && echo yes |
 # user requests a static build.
 ALWAYS_DYN_LIBS := -lpthread -ldl
 # These libraries are not supported by pkg-config.
-ALWAYS_LIBS := -lpcap -lgflags -lnuma
+ALWAYS_LIBS := -lpcap -lgflags -lnuma -lcap
 # If pkg-config is available, we just need a list of the dependecies.
 PKG_CONFIG_DEPS := libdpdk libglog protobuf grpc++ libunwind zlib
 # If pkg-config is not available, we need to list the libs we depend on.
@@ -99,7 +99,7 @@ CXXFLAGS += -std=c++17 -g3 -ggdb3 -march=$(CPU) \
             -isystem $(dir $<).. -isystem $(COREDIR)/modules \
             -D_GNU_SOURCE \
             -Wall -Wextra -Wcast-align -Wno-error=deprecated-declarations \
-            -Wno-error=array-bounds \
+            -Wno-error=array-bounds \ -lcap \
             $(PKG_CFLAGS)
 
 ifeq "$(shell test $(CXXVERSION) -ge 9; echo $$?)" "0"
