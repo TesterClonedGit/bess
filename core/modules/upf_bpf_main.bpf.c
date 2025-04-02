@@ -1,0 +1,371 @@
+/*
+ * Copyright 2022 Sebastiano Miano <mianosebastiano@gmail.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <stddef.h>
+#include <string.h>
+#include <linux/bpf.h>
+#include <linux/if_ether.h>
+#include <linux/if_packet.h>
+#include <linux/ip.h>
+#include <linux/ipv6.h>
+#include <linux/in.h>
+#include <linux/udp.h>
+#include <linux/tcp.h>
+#include <linux/types.h>
+#include <linux/pkt_cls.h>
+#include <linux/if_vlan.h>
+#include <sys/socket.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <bpf/bpf_endian.h>
+
+#include <bpf/bpf_helpers.h>
+#include <xdp/xdp_helpers.h>
+
+#include "upf_bpf_common.h"
+#include "bpf_log.h"
+#include "parse_utils.h"
+#include "gtp_utils.h"
+#include "upf_bpf_maps.h"
+#include "qos_utils.h"
+
+#define USE_REDIRECT_MAP 1
+
+char LICENSE[] SEC("license") = "Dual BSD/GPL";
+
+SEC("upf_main")
+int xdp_upf(struct xdp_md *xdp) {
+#ifdef HXDP_TARGET
+  struct upf_cfg_s upf_cfg;
+  upf_cfg.log_level = 0;
+  upf_cfg.if_id = 1;
+  upf_cfg.if_index_core = 1;
+  upf_cfg.if_index_access = 2;
+#endif
+
+  void *data_end = (void *)(long)xdp->data_end;
+  void *data = (void *)(long)xdp->data;
+
+  __u16 l3_proto;
+  __u16 nh_off;
+  bpf_log_debug("Received packet on interface %d\n", upf_cfg.if_id);
+
+  if (!validate_ethertype(xdp, &l3_proto, &nh_off)) {
+    bpf_log_warning("Unrecognized L3 protocol\n");
+    goto DROP;
+  }
+
+  switch (l3_proto) {
+  case bpf_htons(ETH_P_IP):
+    goto IP; // ipv4 packet
+  case bpf_htons(ETH_P_IPV6):
+    // TODO: Maybe in the future we want to support IPv6 as well
+    goto IP6;
+    break;
+  case bpf_htons(ETH_P_ARP):
+    goto ARP; // arp packet
+  default:
+    goto DROP;
+  }
+
+IP:;
+  struct iphdr *iph = data + nh_off;
+  if ((void *)iph + sizeof(*iph) > data_end) {
+    bpf_log_err("Invalid IPv4 packet\n");
+    goto DROP;
+  }
+
+  // Probably we need to perform additional checks here.
+  // E.g., we might want to check if the packet has dst address equal to the
+  // N3 interface of the UPF
+
+  if (iph->protocol != IPPROTO_UDP) {
+    bpf_log_err("Received non-UDP packet\n");
+    return XDP_PASS;
+  }
+
+UDP:;
+  struct udphdr *udp = (void *)iph + 4 * iph->ihl;
+  if ((void *)udp + sizeof(*udp) > data_end) {
+    bpf_log_err("Invalid UDP packet\n");
+    goto DROP;
+  }
+
+  __u32 teid;
+  __u32 ue_ip_src;
+  if (udp->dest == bpf_htons(GTP_PORT)) {
+    if (!parse_and_validate_gtp(xdp, udp, &teid, &ue_ip_src)) {
+      bpf_log_err("Invalid GTP packet\n");
+      goto DROP;
+    } else {
+      goto PDR_FILL_GTP;
+    }
+  } else {
+    bpf_log_debug("UDP packet received but not matching GTP port\n");
+    goto PDR_FILL_UDP;
+  }
+
+  struct pdr_key_s pdr_key;
+  struct pdr_value_s *pdr_value;
+
+PDR_FILL_GTP:;
+  __builtin_memset(&pdr_key, 0, sizeof(pdr_key));
+  bpf_log_info("GTP packet parsed and extracted TEID = %u\n", bpf_ntohl(teid));
+
+  if (upf_cfg.if_id != IF_INDEX_ACCESS) {
+    bpf_log_warning("Received GTP encapsulated packet on CORE port. DROP!");
+    goto DROP;
+  }
+
+  // FIXME: In the future, for performance reasons, we want to insert
+  // the entries in the map in Big Endian, to avoid the conversion.
+  pdr_key.src_iface = upf_cfg.if_id;
+  pdr_key.tunnel_ip4_dst = bpf_ntohl(iph->daddr);
+  pdr_key.tunnel_teid = bpf_ntohl(teid);
+  pdr_key.ue_ip_src_addr = bpf_ntohl(ue_ip_src);
+
+  bpf_log_debug("PDR lookup -> TunIp4Dst: %u, TEID: %u, UEIpSrc: %u\n",
+                pdr_key.tunnel_ip4_dst, pdr_key.tunnel_teid,
+                pdr_key.ue_ip_src_addr);
+
+  goto PDR_LOOKUP;
+
+PDR_FILL_UDP:;
+  __builtin_memset(&pdr_key, 0, sizeof(pdr_key));
+  // Here I should only match the IP dst address of the packet.
+  // That indicates the address of the UE
+  if (upf_cfg.if_id != IF_INDEX_CORE) {
+    bpf_log_warning("Received non-GTP packet on ACCESS port. DROP!");
+    goto DROP;
+  }
+
+  pdr_key.src_iface = upf_cfg.if_id;
+  pdr_key.inet_ip_dst_addr = bpf_ntohl(iph->daddr);
+
+  bpf_log_debug("PDR lookup -> InetIPDst: %u\n", pdr_key.inet_ip_dst_addr);
+
+  goto PDR_LOOKUP;
+
+PDR_LOOKUP:;
+  pdr_value = bpf_map_lookup_elem(&pdr_list_m, &pdr_key);
+
+  if (pdr_value == NULL) {
+    bpf_log_warning("Error while retrieving key from PDR\n");
+    goto DROP;
+  }
+
+  bpf_log_info("Obtained PDR from map with FSE-ID: %d and FAR-ID: %d\n",
+               pdr_value->fse_id, pdr_value->far_id);
+
+APP_QER_LOOKUP:;
+  data_end = (void *)(long)xdp->data_end;
+  data = (void *)(long)xdp->data;
+
+  size_t packet_size = (size_t)(data_end - data);
+
+  struct app_qer_key_s app_qer_key;
+  enum color_markers_e app_color = QER_INVALID_MARKER;
+
+  app_qer_key.fse_id = pdr_value->fse_id;
+  app_qer_key.qer_id = pdr_value->qer_id;
+  app_qer_key.src_iface = upf_cfg.if_id;
+
+  if (!measure_app_qer_policer(packet_size, &app_qer_key, &app_color)) {
+    bpf_log_debug("No rules found in the app QER policer\n");
+    goto SESSION_QER_LOOKUP;
+  }
+
+  if (app_color == QER_GREEN_MARKER) {
+    bpf_log_info("QER App Policer color is GREEN\n");
+    goto SESSION_QER_LOOKUP;
+  } else if (app_color == QER_YELLOW_MARKER) {
+    bpf_log_info("QER App Policer color is YELLOW\n");
+    goto SESSION_QER_LOOKUP;
+  } else {
+    bpf_log_info("QER App Policer color is RED\n");
+    goto DROP;
+  }
+
+SESSION_QER_LOOKUP:;
+  struct session_qer_key_s session_qer_key;
+  enum color_markers_e session_color = QER_INVALID_MARKER;
+
+  session_qer_key.fse_id = pdr_value->fse_id;
+  session_qer_key.src_iface = upf_cfg.if_id;
+
+  if (!measure_session_qer_policer(packet_size, &session_qer_key,
+                                   &session_color)) {
+    bpf_log_debug("No rules found in the session QER policer\n");
+    goto FAR_LOOKUP;
+  }
+
+  if (session_color == QER_GREEN_MARKER || session_color == QER_YELLOW_MARKER) {
+    bpf_log_info("QER Session Policer color is GREEN or YELLOW\n");
+    goto FAR_LOOKUP;
+  } else {
+    bpf_log_info("QER Session Policer color is RED\n");
+    goto DROP;
+  }
+
+FAR_LOOKUP:;
+  // TODO: Before FAR Lookup we probably need to perform QER Lookup
+  struct far_key_s far_key;
+  __builtin_memset(&far_key, 0, sizeof(far_key));
+
+  struct far_value_s *far_value;
+
+  far_key.far_id = pdr_value->far_id;
+  far_key.fse_id = pdr_value->fse_id;
+
+  bpf_log_info("Far Lookup: far_id: %u, fse_id: %u\n", far_key.far_id,
+               far_key.fse_id);
+
+  far_value = bpf_map_lookup_elem(&far_list_m, &far_key);
+  if (far_value == NULL) {
+    bpf_log_warning("Error while retrieving key from FAR\n");
+    goto DROP;
+  }
+
+  bpf_log_info("Obtained FAR from map. Action: %u\n", far_value->action);
+
+  if (far_value->action == FAR_FORWARD_UPLINK_ACTION) {
+    if (upf_cfg.if_id != IF_INDEX_ACCESS) {
+      bpf_log_warning("FAR forward Uplink action not on ACCESS port\n");
+      goto DROP;
+    }
+
+    // We need to decapsulate the packet and send it out
+    struct gtpv1_header *gtp =
+        (struct gtpv1_header *)((void *)udp + sizeof(*udp));
+    if (!gtp_decap_packet(xdp, gtp, sizeof(*iph), sizeof(*udp))) {
+      bpf_log_err("Decapsulation failed for GTP packet\n");
+      goto DROP;
+    }
+
+    bpf_log_debug("Decapsulation completed. Send packet to CORE interface\n");
+    goto FORWARD;
+
+  } else if (far_value->action == FAR_FORWARD_DOWNLINK_ACTION) {
+    if (upf_cfg.if_id != IF_INDEX_CORE) {
+      bpf_log_warning("FAR forward Downlink action not on CORE port\n");
+      goto DROP;
+    }
+
+    // We need to encapsulate the packet and send it out
+    if (!gtp_encap_packet(xdp, far_value)) {
+      bpf_log_err("Error while encapsulating GTP packet\n");
+      goto DROP;
+    }
+
+    bpf_log_debug("Encapsulation completed. Send packet to ACCESS interface\n");
+    goto FORWARD;
+  } else if (far_value->action == FAR_DROP_ACTION) {
+    bpf_log_debug("FAR drop action\n");
+    goto DROP;
+  } else if (far_value->action == FAR_BUFFER_ACTION) {
+    // TODO: send packet to AF_XDP in the future
+    bpf_log_debug("FAR buffer action\n");
+#ifdef HXDP_TARGET
+    return XDP_DROP;
+#else
+    if (upf_cfg.running_mode == MODE_COMBINED) {
+      return bpf_redirect_map(&xsks_map, 0, XDP_DROP);
+    }
+#endif
+  } else if (far_value->action == FAR_NOTIFY_CP_ACTION) {
+    // TODO: send packet to AF_XDP in the future
+    bpf_log_debug("FAR notify action\n");
+#ifdef HXDP_TARGET
+    return XDP_DROP;
+#else
+    if (upf_cfg.running_mode == MODE_COMBINED) {
+      return bpf_redirect_map(&xsks_map, 0, XDP_DROP);
+    }
+#endif
+  }
+
+FORWARD:;
+  // Update packet buffer after modification
+  data_end = (void *)(long)xdp->data_end;
+  data = (void *)(long)xdp->data;
+
+  if (data + ETH_HLEN > data_end) {
+    bpf_log_err("Packet after modification is invalid! DROP");
+    goto DROP;
+  }
+
+  struct ethhdr *eth = (struct ethhdr *)data;
+  eth->h_proto = bpf_htons(ETH_P_IP);
+
+// TODO: Not sure this is correct. Maybe we should check something on the
+// FSEID?
+#ifdef HXDP_TARGET
+  return bpf_redirect(upf_cfg.if_index_core, 0);
+#else
+  if (upf_cfg.if_id == IF_INDEX_ACCESS) {
+    __builtin_memcpy(eth->h_source, (void *)upf_mac_cfg.core_src_mac,
+                     sizeof(eth->h_source));
+    __builtin_memcpy(eth->h_dest, (void *)upf_mac_cfg.core_dst_mac,
+                     sizeof(eth->h_dest));
+    bpf_log_debug("Redirect pkt to CORE iface with ifindex: %d\n",
+                  upf_cfg.if_index_core);
+
+#if USE_REDIRECT_MAP == 1
+    __u32 redir_key = IF_INDEX_CORE - 1;
+    return bpf_redirect_map(&redir_map_m, redir_key, 0);
+#else 
+    return bpf_redirect(upf_cfg.if_index_core, 0);
+#endif
+  } else {
+    __builtin_memcpy(eth->h_source, (void *)upf_mac_cfg.access_src_mac,
+                     sizeof(eth->h_source));
+    __builtin_memcpy(eth->h_dest, (void *)upf_mac_cfg.access_dst_mac,
+                     sizeof(eth->h_dest));
+    bpf_log_debug("Redirect pkt to ACCESS iface with ifindex: %d\n",
+                  upf_cfg.if_index_access);
+
+#if USE_REDIRECT_MAP == 1
+    __u32 redir_key = IF_INDEX_ACCESS - 1;
+    return bpf_redirect_map(&redir_map_m, redir_key, 0);
+#else 
+    return bpf_redirect(upf_cfg.if_index_access, 0);
+#endif
+  }
+#endif
+
+  return XDP_PASS;
+
+IP6:;
+  bpf_log_debug("Received IPv6 Packet. Dropping\n");
+  return XDP_DROP;
+
+ARP:;
+  // TODO: To be implemented. We can handle the ARP in the data plane,
+  // or we can send the packet to userspace and let BESS handle it.
+  bpf_log_debug("Received ARP.\n");
+
+#ifdef HXDP_TARGET
+  return XDP_DROP;
+#else
+  if (upf_cfg.running_mode == MODE_COMBINED) {
+    return bpf_redirect_map(&xsks_map, 0, XDP_DROP);
+  }
+#endif
+
+DROP:;
+  bpf_log_debug("Dropping packet.\n");
+  return XDP_DROP;
+}
