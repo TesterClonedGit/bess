@@ -182,7 +182,7 @@ endif
 # a severe user-configuration error.
 DRIVER_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/drivers))
 MODULE_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/modules), $(foreach dir,modules,$(wildcard $(dir)/*.cc)) \
-               $(wildcard bess/core/modules/upf_bpf_main.cc))))
+               $(wildcard bess/core/modules/upf_bpf_main.cc))
 PROTO_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/protobuf))
 UTIL_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/utils))
 GATE_HOOK_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/gate_hooks))
@@ -260,7 +260,7 @@ BENCH_SRCS := $(filter %_bench.cc, $(ALL_SRCS))
 BENCH_OBJS := $(patsubst %.cc,%.o,$(notdir $(BENCH_SRCS)))
 BENCH_EXEC := $(BENCH_OBJS:%.o=%)
 
-MODULE_SRCS := $(filter-out $(TEST_SRCS) $(BENCH_SRCS), $(MODULES), $(wildcard bess/core/modules/upf_bpf_main.cc))))
+MODULE_SRCS := $(filter-out $(TEST_SRCS) $(BENCH_SRCS), $(MODULES), $(wildcard bess/core/modules/upf_bpf_main.cc))
 MODULE_OBJS := $(addprefix modules/,$(patsubst %.cc,%.o, \
                  $(notdir $(MODULE_SRCS))))
 
