@@ -182,7 +182,7 @@ endif
 # a severe user-configuration error.
 DRIVER_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/drivers))
 MODULE_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/modules), $(foreach dir,modules,$(wildcard $(dir)/*.cc)) \
-               $(wildcard bess/core/modules/upf_bpf_main.cc), $(wildcard bess/core/modules/worker_split.cc))
+               $(wildcard bess/core/modules/upf_bpf_main.bpf.c), $(wildcard bess/core/modules/worker_split.cc))
 PROTO_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/protobuf))
 UTIL_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/utils))
 GATE_HOOK_PLUGINS := $(foreach dir,$(PLUGINS),$(wildcard $(dir)/gate_hooks))
@@ -214,7 +214,7 @@ PROTOCFLAGS += --cpp_out=./pb --grpc_out=./pb --plugin=protoc-gen-grpc=$(PROTOC_
 # Use MODULE_SRCS below, which filters them out, when that's important.
 DRIVERS := $(foreach dir,drivers $(DRIVER_PLUGINS),$(wildcard $(dir)/*.cc))
 MODULES := $(foreach dir,modules,$(wildcard $(dir)/*.cc)\
-           $(wildcard bess/core/modules/upf_bpf_main.cc) \
+           $(wildcard bess/core/modules/upf_bpf_main.bpf.c) \
            $(wildcard bess/core/modules/worker_split.cc))
 UTILS := $(foreach dir,utils $(UTIL_PLUGINS),$(wildcard $(dir)/*.cc))
 GATE_HOOK_SRCS := $(foreach dir,gate_hooks $(GATE_HOOK_PLUGINS),$(wildcard $(dir)/*.cc))
