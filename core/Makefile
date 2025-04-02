@@ -213,7 +213,7 @@ PROTOCFLAGS += --cpp_out=./pb --grpc_out=./pb --plugin=protoc-gen-grpc=$(PROTOC_
 # sources -- it's just all the files in all modules/.
 # Use MODULE_SRCS below, which filters them out, when that's important.
 DRIVERS := $(foreach dir,drivers $(DRIVER_PLUGINS),$(wildcard $(dir)/*.cc))
-MODULES := $(foreach dir,modules,$(wildcard $(dir)/*.cc), $(wildcard bess/core/modules/upf_bpf_main.cc))))
+MODULES := $(foreach dir,modules,$(wildcard $(dir)/*.cc), $(wildcard bess/core/modules/upf_bpf_main.cc))
 UTILS := $(foreach dir,utils $(UTIL_PLUGINS),$(wildcard $(dir)/*.cc))
 GATE_HOOK_SRCS := $(foreach dir,gate_hooks $(GATE_HOOK_PLUGINS),$(wildcard $(dir)/*.cc))
 GATE_HOOKS_H := $(foreach dir,gate_hooks $(GATE_HOOK_PLUGINS),$(wildcard $(dir)/*.h))
@@ -222,7 +222,7 @@ RESUME_HOOKS_H := $(foreach dir,resume_hooks $(RESUME_HOOK_PLUGINS),$(wildcard $
 DRIVER_H := $(foreach dir,drivers $(DRIVER_PLUGINS),$(wildcard $(dir)/*.h))
 MODULE_H := $(foreach dir,drivers,$(wildcard $(dir)/*.h))
 UTIL_H := $(foreach dir,utils $(UTIL_PLUGINS),$(wildcard $(dir)/*.h))
-PLUGIN_MODULES := $(foreach dir,$(MODULE_PLUGINS),$(wildcard $(dir)/*.cc), $(wildcard bess/core/modules/upf_bpf_main.cc))))
+PLUGIN_MODULES := $(foreach dir,$(MODULE_PLUGINS),$(wildcard $(dir)/*.cc), $(wildcard bess/core/modules/upf_bpf_main.cc))
 PLUGIN_MODULE_H := $(foreach dir,$(MODULE_PLUGINS),$(wildcard $(dir)/*.h))
 
 # NB: the first vpath is for most files, including objects for drivers,
