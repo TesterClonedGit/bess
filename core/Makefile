@@ -118,7 +118,7 @@ ifeq "$(shell expr $(CXXCOMPILER) = g++)" "1"
   CXXFLAGS += -fno-gnu-unique
 endif
 
-LDFLAGS += -rdynamic -no-pie -L/usr/lib/x86_64-linux-gnu
+LDFLAGS += -rdynamic -L/usr/lib/x86_64-linux-gnu
 ifdef BESS_LINK_DYNAMIC
   LIBS_ALL_SHARED = -Wl,-call_shared -lcap
   LIBS_DL_SHARED = -lcap
