@@ -95,7 +95,7 @@ endif
 COREDIR := $(abspath .)
 CPU ?= native
 CXXFLAGS += -std=c++17 -g3 -ggdb3 -march=$(CPU) \
-            -isystem $(COREDIR) \ -fPIE \
+            -isystem $(COREDIR) \
             -isystem $(dir $<).. -isystem $(COREDIR)/modules \
             -D_GNU_SOURCE \
             -Wall -Wextra -Wcast-align -Wno-error=deprecated-declarations \
