@@ -65,7 +65,7 @@ HAS_PKG_CONFIG := $(shell command -v $(PKG_CONFIG) 2>&1 >/dev/null && echo yes |
 # user requests a static build.
 ALWAYS_DYN_LIBS := -lpthread -ldl
 # These libraries are not supported by pkg-config.
-ALWAYS_LIBS := -lpcap -lgflags -lnuma -L/usr/lib/x86_64-linux-gnu -lcap
+ALWAYS_LIBS := -lpcap -lgflags -lnuma
 # If pkg-config is available, we just need a list of the dependecies.
 PKG_CONFIG_DEPS := libdpdk libglog protobuf grpc++ libunwind zlib
 # If pkg-config is not available, we need to list the libs we depend on.
@@ -125,7 +125,7 @@ ifdef BESS_LINK_DYNAMIC
   ifeq ($(HAS_PKG_CONFIG), yes)
     PKG_LIBS := $(shell $(PKG_CONFIG) --libs $(PKG_CONFIG_DEPS))
   else
-    PKG_LIBS := $(NO_PKG_CONFIG_LIBS) -L/usr/lib/x86_64-linux-gnu -lcap
+    PKG_LIBS := $(NO_PKG_CONFIG_LIBS)
   endif
 else # Used static libraries
   LIBS_ALL_SHARED =
@@ -142,7 +142,7 @@ else # Used static libraries
   endif
 endif
 
-LIBS += -Wl,-non_shared \ -L/usr/lib/x86_64-linux-gnu -lcap \
+LIBS += -Wl,-non_shared \
         $(LIBS_ALL_SHARED) \
         $(PKG_LIBS) $(ALWAYS_LIBS) \
         $(LIBS_DL_SHARED) \
