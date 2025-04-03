@@ -99,7 +99,7 @@ CXXFLAGS += -std=c++17 -g3 -ggdb3 -march=$(CPU) \
             -isystem $(dir $<).. -isystem $(COREDIR)/modules \
             -D_GNU_SOURCE \
             -Wall -Wextra -Wcast-align -Wno-error=deprecated-declarations \
-            -Wno-error=array-bounds \ -lcap \
+            -Wno-error=array-bounds \
             $(PKG_CFLAGS)
 
 ifeq "$(shell test $(CXXVERSION) -ge 9; echo $$?)" "0"
@@ -118,18 +118,18 @@ ifeq "$(shell expr $(CXXCOMPILER) = g++)" "1"
   CXXFLAGS += -fno-gnu-unique
 endif
 
-LDFLAGS += -rdynamic -no-pie -L/usr/lib/x86_64-linux-gnu -lcap
+LDFLAGS += -rdynamic -no-pie -L/usr/lib/x86_64-linux-gnu
 ifdef BESS_LINK_DYNAMIC
-  LIBS_ALL_SHARED = -Wl,-call_shared
-  LIBS_DL_SHARED =
+  LIBS_ALL_SHARED = -Wl,-call_shared -lcap
+  LIBS_DL_SHARED = -lcap
   ifeq ($(HAS_PKG_CONFIG), yes)
     PKG_LIBS := $(shell $(PKG_CONFIG) --libs $(PKG_CONFIG_DEPS))
   else
     PKG_LIBS := $(NO_PKG_CONFIG_LIBS)
   endif
 else # Used static libraries
-  LIBS_ALL_SHARED =
-  LIBS_DL_SHARED = -Wl,-call_shared
+  LIBS_ALL_SHARED = -lcap
+  LIBS_DL_SHARED = -Wl,-call_shared -lcap
   LDFLAGS += -static-libstdc++ -L/usr/lib/x86_64-linux-gnu -lcap
   ifeq ($(HAS_PKG_CONFIG), yes)
     PKG_LIBS := $(shell $(PKG_CONFIG) --static --libs $(PKG_CONFIG_DEPS))
