@@ -103,7 +103,7 @@ CXXFLAGS += -std=c++17 -g3 -ggdb3 -march=$(CPU) \
             -isystem $(dir $<).. -isystem $(COREDIR)/modules \
             -D_GNU_SOURCE \
             -Werror -Wall -Wextra -Wcast-align -Wno-error=deprecated-declarations \
-            -Wno-error=array-bounds \
+            -Wno-error=array-bounds \ -fno-inline \
             $(PKG_CFLAGS)
 
 ifeq "$(shell test $(CXXVERSION) -ge 9; echo $$?)" "0"
